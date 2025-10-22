@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     # Cho phép chạy thủ công
 
-# Thêm permissions để workflow có thể tạo release
+# Thêm permissions để workflow có thể tạo release và commit
 permissions:
   contents: write
   
@@ -18,7 +18,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Get latest Frida version
         id: frida-version
         run: |
@@ -26,21 +28,31 @@ jobs:
           echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
           echo "Latest Frida version: $LATEST_VERSION"
           
-      - name: Check if release exists
-        id: check-release
+      - name: Check current version in repo
+        id: check-version
         run: |
-          VERSION="${{ steps.frida-version.outputs.version }}"
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/${{ github.repository }}/releases/tags/$VERSION)
-          if [ "$HTTP_CODE" = "200" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Release $VERSION already exists"
+          # Tạo file version.txt nếu chưa tồn tại
+          if [ ! -f version.txt ]; then
+            echo "none" > version.txt
+            echo "Version file not found, creating new one"
+          fi
+          
+          CURRENT_VERSION=$(cat version.txt)
+          LATEST_VERSION="${{ steps.frida-version.outputs.version }}"
+          
+          echo "Current version in repo: $CURRENT_VERSION"
+          echo "Latest version from Frida: $LATEST_VERSION"
+          
+          if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+            echo "is_new=false" >> $GITHUB_OUTPUT
+            echo "No new version available"
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Release $VERSION does not exist"
+            echo "is_new=true" >> $GITHUB_OUTPUT
+            echo "New version detected!"
           fi
           
       - name: Download Frida Gadgets
-        if: steps.check-release.outputs.exists == 'false'
+        if: steps.check-version.outputs.is_new == 'true'
         run: |
           VERSION="${{ steps.frida-version.outputs.version }}"
           mkdir -p downloads/android downloads/ios downloads/linux
@@ -73,7 +85,7 @@ jobs:
             "https://github.com/frida/frida/releases/download/${VERSION}/frida-gadget-${VERSION}-linux-arm64.so.xz"
           
       - name: Extract and compress gadgets
-        if: steps.check-release.outputs.exists == 'false'
+        if: steps.check-version.outputs.is_new == 'true'
         run: |
           VERSION="${{ steps.frida-version.outputs.version }}"
           
@@ -94,7 +106,7 @@ jobs:
           ls -lh *.zip
           
       - name: Create Release
-        if: steps.check-release.outputs.exists == 'false'
+        if: steps.check-version.outputs.is_new == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.frida-version.outputs.version }}
@@ -127,6 +139,10 @@ jobs:
             - `frida-gadget-*-linux.zip` - Tất cả kiến trúc Linux
             - `frida-gadget-*-all-platforms.zip` - Tất cả nền tảng
             
+            ---
+            
+            **Cập nhật tự động:** $(date -u '+%Y-%m-%d %H:%M:%S') UTC
+            
           files: |
             frida-gadget-${{ steps.frida-version.outputs.version }}-android.zip
             frida-gadget-${{ steps.frida-version.outputs.version }}-ios.zip
@@ -136,10 +152,45 @@ jobs:
           prerelease: false
           fail_on_unmatched_files: true
           
+      - name: Update version file
+        if: steps.check-version.outputs.is_new == 'true'
+        run: |
+          VERSION="${{ steps.frida-version.outputs.version }}"
+          echo "$VERSION" > version.txt
+          
+          # Tạo file chi tiết với thông tin đầy đủ
+          cat > version-info.json << EOF
+          {
+            "version": "$VERSION",
+            "updated_at": "$(date -u '+%Y-%m-%d %H:%M:%S') UTC",
+            "release_url": "https://github.com/${{ github.repository }}/releases/tag/$VERSION",
+            "frida_release_url": "https://github.com/frida/frida/releases/tag/$VERSION",
+            "platforms": {
+              "android": ["arm", "arm64", "x86", "x86_64"],
+              "ios": ["universal"],
+              "linux": ["x86", "x86_64", "arm", "arm64"]
+            }
+          }
+          EOF
+          
+          echo "Version file updated to $VERSION"
+          cat version.txt
+          echo "Version info:"
+          cat version-info.json
+          
+      - name: Commit and push version file
+        if: steps.check-version.outputs.is_new == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add version.txt version-info.json
+          git commit -m "🚀 Update Frida version to ${{ steps.frida-version.outputs.version }}"
+          git push
+          
       - name: Workflow completed
         run: |
-          if [ "${{ steps.check-release.outputs.exists }}" = "true" ]; then
-            echo "✅ Release already exists, no action needed"
+          if [ "${{ steps.check-version.outputs.is_new }}" = "true" ]; then
+            echo "✅ New version ${{ steps.frida-version.outputs.version }} released successfully"
           else
-            echo "✅ New release created successfully"
+            echo "✅ No new version available. Current version is up to date."
           fi
