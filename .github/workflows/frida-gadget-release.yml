@@ -7,6 +7,10 @@ on:
   workflow_dispatch:
     # Cho phép chạy thủ công
 
+# Thêm permissions để workflow có thể tạo release
+permissions:
+  contents: write
+  
 jobs:
   check-and-release:
     runs-on: ubuntu-latest
@@ -91,7 +95,7 @@ jobs:
           
       - name: Create Release
         if: steps.check-release.outputs.exists == 'false'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.frida-version.outputs.version }}
           name: Frida Gadget ${{ steps.frida-version.outputs.version }}
@@ -130,8 +134,7 @@ jobs:
             frida-gadget-${{ steps.frida-version.outputs.version }}-all-platforms.zip
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_unmatched_files: true
           
       - name: Workflow completed
         run: |
