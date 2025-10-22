@@ -1,0 +1,11 @@
+{
+  "version": "17.4.0",
+  "updated_at": "2025-10-22 03:45:51 UTC",
+  "release_url": "https://github.com/thedangcoder/frida-gadget/releases/tag/17.4.0",
+  "frida_release_url": "https://github.com/frida/frida/releases/tag/17.4.0",
+  "platforms": {
+    "android": ["arm", "arm64", "x86", "x86_64"],
+    "ios": ["universal"],
+    "linux": ["x86", "x86_64", "arm", "arm64"]
+  }
+}
